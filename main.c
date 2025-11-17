@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "physics/physics.h"
+#include "worlds/earth.h"
+#include "camera/follow.h"
 
 typedef enum GameScreen {
     SCREEN_MENU = 0,
@@ -43,7 +45,8 @@ int main(void) {
     float dotTimer = 0.0f;
 
     Rocket rocket;
-    float baseY = screenH - 100.0f;
+    Earth earth;
+    Camera camera;
     bool rocketInitialized = false;
 
     Star stars[150];
@@ -98,7 +101,9 @@ int main(void) {
             if (loadingProgress >= 1.0f) {
                 currentScreen = SCREEN_SIM;
                 if (!rocketInitialized) {
-                    rocket_init(&rocket, screenW / 2.0f, screenH - 150.0f);
+                    earth_init(&earth, screenW, screenH);
+                    rocket_init(&rocket, screenW / 2.0f, earth.groundLevel - 5.0f);
+                    camera_init(&camera, rocket.body.position.x, rocket.body.position.y);
                     rocketInitialized = true;
                 }
             }
@@ -111,39 +116,42 @@ int main(void) {
 
             float dt = GetFrameTime();
 
-            if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) {
-                rocket.engineOn = true;
-            } else {
-                rocket.engineOn = false;
-            }
+            rocket.throttle = (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP));
 
             if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) {
-                rocket_rotate(&rocket, -2.5f, dt);
+                rocket.body.angularVelocity = -2.0f;
             }
             if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) {
-                rocket_rotate(&rocket, 2.5f, dt);
+                rocket.body.angularVelocity = 2.0f;
             }
 
-            rocket_apply_thrust(&rocket, dt);
-            rocket_apply_gravity(&rocket, 200.0f, dt);
-            rocket_update(&rocket, dt);
+            rocket_update(&rocket, dt, earth.gravity);
 
-            if (rocket.body.position.y > baseY - 5) {
-                rocket.body.position.y = baseY - 5;
+            float altitude = earth.groundLevel - rocket.body.position.y;
+            camera_follow(&camera, rocket.body.position.x, rocket.body.position.y, dt);
+            camera_update_zoom(&camera, altitude, dt);
+            earth_update(&earth, altitude, dt);
+
+            if (rocket.body.position.y >= earth.groundLevel - 5) {
+                rocket.body.position.y = earth.groundLevel - 5;
                 rocket.body.velocity.y = 0;
-                if (rocket.body.velocity.x > -5 && rocket.body.velocity.x < 5) {
-                    rocket.body.velocity.x *= 0.8f;
-                }
+                rocket.body.velocity.x *= 0.7f;
             }
         }
 
         BeginDrawing();
-            ClearBackground((Color){ 2, 4, 15, 255 });
+            if (currentScreen == SCREEN_SIM) {
+                earth_draw(&earth, screenW, screenH, camera.y, earth.groundLevel);
+            } else {
+                ClearBackground((Color){ 2, 4, 15, 255 });
+            }
 
-            for (int i = 0; i < 150; i++) {
-                float size = stars[i].speed * 3.0f;
-                DrawCircle(stars[i].x, stars[i].y, size,
-                          (Color){ 200, 220, 255, (unsigned char)stars[i].brightness });
+            if (currentScreen != SCREEN_SIM) {
+                for (int i = 0; i < 150; i++) {
+                    float size = stars[i].speed * 3.0f;
+                    DrawCircle(stars[i].x, stars[i].y, size,
+                              (Color){ 200, 220, 255, (unsigned char)stars[i].brightness });
+                }
             }
 
             if (currentScreen == SCREEN_MENU) {
@@ -266,42 +274,55 @@ int main(void) {
                          (Color){ 0, 255, 200, 255 });
             }
             else if (currentScreen == SCREEN_SIM) {
-                for (int y = 0; y < screenH; y += 40) {
-                    DrawLine(0, y, screenW, y, (Color){ 0, 80, 120, 20 });
-                }
-                for (int x = 0; x < screenW; x += 40) {
-                    DrawLine(x, 0, x, screenH, (Color){ 0, 80, 120, 20 });
-                }
-
-                DrawLineEx((Vector2){ 0, baseY }, (Vector2){ screenW, baseY }, 5.0f,
-                          (Color){ 0, 255, 200, 255 });
-                DrawLineEx((Vector2){ 0, baseY + 2 }, (Vector2){ screenW, baseY + 2 }, 3.0f,
-                          (Color){ 0, 255, 200, 100 });
+                float altitude = earth.groundLevel - rocket.body.position.y;
 
                 float baseWidth = 100.0f;
                 float baseCenterX = screenW / 2.0f;
-                Rectangle launchBase = {
-                    baseCenterX - baseWidth/2,
-                    baseY - 15.0f,
-                    baseWidth,
-                    15.0f
-                };
+                float launchPadWorldY = earth.groundLevel;
+                float launchPadScreenY = launchPadWorldY - camera.y + screenH / 2;
 
-                DrawRectangleRec(
-                    (Rectangle){ launchBase.x - 2, launchBase.y - 2, launchBase.width + 4, launchBase.height + 4 },
-                    (Color){ 255, 150, 0, (unsigned char)(100 + 100 * baseGlow) });
-                DrawRectangleRec(launchBase, (Color){ 40, 40, 50, 255 });
-                DrawRectangleLinesEx(launchBase, 2, (Color){ 255, 150, 0, 255 });
+                if (launchPadScreenY > -50 && launchPadScreenY < screenH + 50) {
+                    Rectangle drawLaunchBase = {
+                        baseCenterX - baseWidth/2,
+                        launchPadScreenY - 15.0f,
+                        baseWidth,
+                        15.0f
+                    };
+
+                    DrawRectangleRec(
+                        (Rectangle){ drawLaunchBase.x - 2, drawLaunchBase.y - 2, drawLaunchBase.width + 4, drawLaunchBase.height + 4 },
+                        (Color){ 255, 150, 0, (unsigned char)(80 + 80 * baseGlow) });
+                    DrawRectangleRec(drawLaunchBase, (Color){ 30, 35, 40, 255 });
+                    DrawRectangleLinesEx(drawLaunchBase, 2, (Color){ 255, 140, 0, 255 });
+                }
 
                 float rocketSize = 40.0f;
-                Vec2 p1 = { rocket.body.position.x, rocket.body.position.y - rocketSize };
-                Vec2 p2 = { rocket.body.position.x - rocketSize/2, rocket.body.position.y };
-                Vec2 p3 = { rocket.body.position.x + rocketSize/2, rocket.body.position.y };
 
-                Vec2 center = { rocket.body.position.x, rocket.body.position.y - rocketSize/3 };
-                p1 = vec2_add(vec2_rotate(vec2_sub(p1, center), rocket.body.rotation), center);
-                p2 = vec2_add(vec2_rotate(vec2_sub(p2, center), rocket.body.rotation), center);
-                p3 = vec2_add(vec2_rotate(vec2_sub(p3, center), rocket.body.rotation), center);
+                float rocketScreenX = rocket.body.position.x - camera.x + screenW / 2;
+                float rocketScreenY = rocket.body.position.y - camera.y + screenH / 2;
+
+                float cosR = cosf(rocket.body.rotation);
+                float sinR = sinf(rocket.body.rotation);
+
+                float tipX = 0;
+                float tipY = -rocketSize;
+                float leftX = -rocketSize/2;
+                float leftY = 0;
+                float rightX = rocketSize/2;
+                float rightY = 0;
+
+                Vec2 p1 = {
+                    rocketScreenX + (tipX * cosR - tipY * sinR),
+                    rocketScreenY + (tipX * sinR + tipY * cosR)
+                };
+                Vec2 p2 = {
+                    rocketScreenX + (leftX * cosR - leftY * sinR),
+                    rocketScreenY + (leftX * sinR + leftY * cosR)
+                };
+                Vec2 p3 = {
+                    rocketScreenX + (rightX * cosR - rightY * sinR),
+                    rocketScreenY + (rightX * sinR + rightY * cosR)
+                };
 
                 DrawTriangle((Vector2){ p1.x, p1.y }, (Vector2){ p3.x, p3.y }, (Vector2){ p2.x, p2.y }, (Color){ 255, 140, 0, 255 });
 
@@ -315,18 +336,20 @@ int main(void) {
                 DrawLineEx((Vector2){ p2.x, p2.y }, (Vector2){ p3.x, p3.y }, 3.0f, (Color){ 255, 200, 0, 255 });
                 DrawLineEx((Vector2){ p3.x, p3.y }, (Vector2){ p1.x, p1.y }, 3.0f, (Color){ 255, 200, 0, 255 });
 
-                if (rocket.engineOn && rocket_has_fuel(&rocket)) {
-                    Vec2 exhaustDir = (Vec2){ sinf(rocket.body.rotation), cosf(rocket.body.rotation) };
-                    float exhaustLength = 20.0f + (rand() % 10);
-                    Vector2 exhaustStart = { rocket.body.position.x, rocket.body.position.y };
-                    Vector2 exhaustEnd = {
-                        exhaustStart.x + exhaustDir.x * exhaustLength,
-                        exhaustStart.y + exhaustDir.y * exhaustLength
+                if (rocket.throttle && rocket.fuel > 0) {
+                    float exhaustAngle = rocket.body.rotation;
+                    float exhaustDist = 25.0f + (rand() % 15);
+                    Vector2 exhaustPos = {
+                        rocketScreenX + sinf(exhaustAngle) * exhaustDist,
+                        rocketScreenY + cosf(exhaustAngle) * exhaustDist
                     };
 
-                    DrawCircle(exhaustEnd.x, exhaustEnd.y, 8, (Color){ 255, 150, 0, 150 });
-                    DrawCircle(exhaustEnd.x, exhaustEnd.y, 5, (Color){ 255, 200, 100, 200 });
+                    DrawCircle(exhaustPos.x, exhaustPos.y, 10, (Color){ 255, 150, 0, 120 });
+                    DrawCircle(exhaustPos.x, exhaustPos.y, 6, (Color){ 255, 220, 100, 180 });
                 }
+
+                DrawRectangle(screenW / 2 - 2, screenH / 2 - 10, 4, 20, (Color){ 0, 255, 200, 100 });
+                DrawRectangle(screenW / 2 - 10, screenH / 2 - 2, 20, 4, (Color){ 0, 255, 200, 100 });
 
                 Color backBtnColor = hoveringBack ?
                     (Color){ 0, 255, 200, 255 } :
@@ -360,11 +383,12 @@ int main(void) {
                         rocket.fuel > 20 ? (Color){ 0, 255, 200, 255 } : (Color){ 255, 100, 100, 255 });
 
                 char altText[32];
-                sprintf(altText, "ALT: %.0fm", baseY - rocket.body.position.y);
+                sprintf(altText, "ALT: %.0fm", earth.groundLevel - rocket.body.position.y);
                 DrawText(altText, 30, screenH - 60, 20, (Color){ 0, 255, 200, 255 });
 
                 char velText[32];
-                float speed = vec2_magnitude(rocket.body.velocity);
+                float speed = sqrtf(rocket.body.velocity.x * rocket.body.velocity.x +
+                                   rocket.body.velocity.y * rocket.body.velocity.y);
                 sprintf(velText, "VEL: %.1fm/s", speed);
                 DrawText(velText, 30, screenH - 35, 20, (Color){ 0, 255, 200, 255 });
 
