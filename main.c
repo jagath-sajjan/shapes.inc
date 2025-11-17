@@ -46,7 +46,7 @@ int main(void) {
 
     Rocket rocket;
     Earth earth;
-    Camera camera;
+    GameCamera camera;
     bool rocketInitialized = false;
 
     Star stars[150];
@@ -103,7 +103,7 @@ int main(void) {
                 if (!rocketInitialized) {
                     earth_init(&earth, screenW, screenH);
                     rocket_init(&rocket, screenW / 2.0f, earth.groundLevel - 5.0f);
-                    camera_init(&camera, rocket.body.position.x, rocket.body.position.y);
+                    camera_init(&camera, rocket.body.position.x, rocket.body.position.y - 200.0f);
                     rocketInitialized = true;
                 }
             }
@@ -142,11 +142,25 @@ int main(void) {
         BeginDrawing();
             if (currentScreen == SCREEN_SIM) {
                 earth_draw(&earth, screenW, screenH, camera.y, earth.groundLevel);
+
+                float altitude = earth.groundLevel - rocket.body.position.y;
+                if (altitude > 800) {
+                    for (int i = 0; i < 150; i++) {
+                        float starAlpha = 0;
+                        if (altitude > 800 && altitude < 1500) {
+                            starAlpha = (altitude - 800) / 700.0f;
+                        } else if (altitude >= 1500) {
+                            starAlpha = 1.0f;
+                        }
+
+                        float size = stars[i].speed * 3.0f;
+                        DrawCircle(stars[i].x, stars[i].y, size,
+                                  (Color){ 200, 220, 255, (unsigned char)(stars[i].brightness * starAlpha) });
+                    }
+                }
             } else {
                 ClearBackground((Color){ 2, 4, 15, 255 });
-            }
 
-            if (currentScreen != SCREEN_SIM) {
                 for (int i = 0; i < 150; i++) {
                     float size = stars[i].speed * 3.0f;
                     DrawCircle(stars[i].x, stars[i].y, size,
@@ -347,9 +361,6 @@ int main(void) {
                     DrawCircle(exhaustPos.x, exhaustPos.y, 10, (Color){ 255, 150, 0, 120 });
                     DrawCircle(exhaustPos.x, exhaustPos.y, 6, (Color){ 255, 220, 100, 180 });
                 }
-
-                DrawRectangle(screenW / 2 - 2, screenH / 2 - 10, 4, 20, (Color){ 0, 255, 200, 100 });
-                DrawRectangle(screenW / 2 - 10, screenH / 2 - 2, 20, 4, (Color){ 0, 255, 200, 100 });
 
                 Color backBtnColor = hoveringBack ?
                     (Color){ 0, 255, 200, 255 } :

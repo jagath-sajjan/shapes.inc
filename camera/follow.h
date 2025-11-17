@@ -6,10 +6,10 @@ typedef struct {
     float y;
     float zoom;
     float smoothness;
-} Camera;
+} GameCamera;
 
-void camera_init(Camera* cam, float x, float y);
-void camera_follow(Camera* cam, float targetX, float targetY, float dt);
-void camera_update_zoom(Camera* cam, float altitude, float dt);
+void camera_init(GameCamera* cam, float x, float y);
+void camera_follow(GameCamera* cam, float targetX, float targetY, float dt);
+void camera_update_zoom(GameCamera* cam, float altitude, float dt);
 
 #endif
