@@ -5,9 +5,11 @@
 #include "physics/physics.h"
 #include "worlds/earth.h"
 #include "camera/follow.h"
+#include "build/build.h"
 
 typedef enum GameScreen {
     SCREEN_MENU = 0,
+    SCREEN_BUILD,
     SCREEN_LOADING,
     SCREEN_SIM
 } GameScreen;
@@ -47,6 +49,7 @@ int main(void) {
     Rocket rocket;
     Earth earth;
     GameCamera camera;
+    BuildScreen buildScreen;
     bool rocketInitialized = false;
 
     Star stars[150];
@@ -78,15 +81,32 @@ int main(void) {
         bool hoveringPlay = CheckCollisionPointRec(mouse, playButton);
         bool clickedPlay  = hoveringPlay && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
 
-        bool hoveringBack = CheckCollisionPointRec(mouse, backButton);
-        bool clickedBack = hoveringBack && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
-
         if (currentScreen == SCREEN_MENU) {
             if (clickedPlay) {
+                currentScreen = SCREEN_BUILD;
+                build_init(&buildScreen, screenW, screenH);
+            }
+        }
+        else if (currentScreen == SCREEN_BUILD) {
+            bool shouldLaunch = false;
+            bool shouldGoHome = false;
+            bool shouldGoBack = false;
+
+            build_update(&buildScreen, mouse, &shouldLaunch, &shouldGoHome, &shouldGoBack);
+
+            if (shouldLaunch) {
                 currentScreen = SCREEN_LOADING;
                 loadingProgress = 0.0f;
                 loadingDots = 0;
                 dotTimer = 0.0f;
+            }
+
+            if (shouldGoHome) {
+                currentScreen = SCREEN_MENU;
+            }
+
+            if (shouldGoBack) {
+                currentScreen = SCREEN_MENU;
             }
         }
         else if (currentScreen == SCREEN_LOADING) {
@@ -109,8 +129,18 @@ int main(void) {
             }
         }
         else if (currentScreen == SCREEN_SIM) {
-            if (clickedBack) {
+            bool shouldGoHomeFromSim = false;
+            bool shouldGoBackToBuild = false;
+
+            build_draw_settings(&buildScreen, mouse, &shouldGoHomeFromSim, &shouldGoBackToBuild);
+
+            if (shouldGoHomeFromSim) {
                 currentScreen = SCREEN_MENU;
+                rocketInitialized = false;
+            }
+
+            if (shouldGoBackToBuild) {
+                currentScreen = SCREEN_BUILD;
                 rocketInitialized = false;
             }
 
@@ -215,6 +245,9 @@ int main(void) {
                          btnFontSize,
                          btnColor);
             }
+            else if (currentScreen == SCREEN_BUILD) {
+                build_draw(&buildScreen, screenW, screenH);
+            }
             else if (currentScreen == SCREEN_LOADING) {
                 const char *loadingText = ">>> INITIALIZING SIMULATION";
                 int loadFontSize = 32;
@@ -290,6 +323,21 @@ int main(void) {
             else if (currentScreen == SCREEN_SIM) {
                 float altitude = earth.groundLevel - rocket.body.position.y;
 
+                bool shouldGoHomeFromSim = false;
+                bool shouldGoBackToBuild = false;
+
+                build_draw_settings(&buildScreen, mouse, &shouldGoHomeFromSim, &shouldGoBackToBuild);
+
+                if (shouldGoHomeFromSim) {
+                    currentScreen = SCREEN_MENU;
+                    rocketInitialized = false;
+                }
+
+                if (shouldGoBackToBuild) {
+                    currentScreen = SCREEN_BUILD;
+                    rocketInitialized = false;
+                }
+
                 float baseWidth = 100.0f;
                 float baseCenterX = screenW / 2.0f;
                 float launchPadWorldY = earth.groundLevel;
@@ -362,27 +410,8 @@ int main(void) {
                     DrawCircle(exhaustPos.x, exhaustPos.y, 6, (Color){ 255, 220, 100, 180 });
                 }
 
-                Color backBtnColor = hoveringBack ?
-                    (Color){ 0, 255, 200, 255 } :
-                    (Color){ 0, 200, 160, 255 };
-                Color backGlow = hoveringBack ?
-                    (Color){ 0, 255, 200, 120 } :
-                    (Color){ 0, 255, 200, 60 };
-
-                DrawRectangleRounded(
-                    (Rectangle){ backButton.x - 3, backButton.y - 3, backButton.width + 6, backButton.height + 6 },
-                    0.3f, 16, backGlow);
-                DrawRectangleRounded(backButton, 0.3f, 16, (Color){ 5, 10, 30, 255 });
-                DrawRectangleRoundedLines(backButton, 0.3f, 16, backBtnColor);
-
-                const char *backText = "← BACK";
-                int backFontSize = 24;
-                int backTextWidth = MeasureText(backText, backFontSize);
-                DrawText(backText,
-                         backButton.x + backButton.width/2 - backTextWidth/2,
-                         backButton.y + backButton.height/2 - backFontSize/2,
-                         backFontSize,
-                         backBtnColor);
+                Color backBtnColor = (Color){ 0, 255, 200, 255 };
+                Color backGlow = (Color){ 0, 255, 200, 60 };
 
                 const char *statusText = "ROCKET STATUS: READY";
                 DrawText(statusText, screenW - MeasureText(statusText, 20) - 30, 30, 20,
